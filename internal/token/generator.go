@@ -13,10 +13,13 @@ import (
 )
 
 type Generator struct {
-	Issuer     string
-	SingingKey interface{}
-	Audiences  []string
-	TTL        time.Duration
+	Issuer          string
+	SingingKey      interface{}
+	VerificationKey interface{}
+	KeyID           string
+	JWKSURL         string
+	Audiences       []string
+	TTL             time.Duration
 }
 
 func (g Generator) Generate(p pipeline.ConcoursePipeline) (string, error) {
@@ -34,13 +37,16 @@ func (g Generator) Generate(p pipeline.ConcoursePipeline) (string, error) {
 	},
 	)
 
+	token.Header["kid"] = g.KeyID
+	token.Header["jku"] = g.JWKSURL
+
 	return token.SignedString(g.SingingKey)
 }
 
 func (g Generator) IsTokenStillValid(token string) (bool, time.Duration, error) {
 	parser := jwt.NewParser(jwt.WithIssuer(g.Issuer), jwt.WithExpirationRequired())
 	parsed, err := parser.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		return g.SingingKey, nil
+		return g.VerificationKey, nil
 	})
 
 	if err != nil {

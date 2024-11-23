@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"fmt"
 	"time"
 
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/keys"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/manager"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/pipeline"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
@@ -28,13 +24,20 @@ func main() {
 		},
 	}
 
-	pkey := generateKey()
+	kid := "abcd"
+	public, private, _ := keys.GenerateKey()
+	keyset, _ := keys.CreateKeyset(kid, private)
+	handler := keys.CreateHTTPHandler(keyset)
+	go keys.ListenAndServe(":8080", handler)
 
 	gen := token.Generator{
-		Issuer:     "http://localhost",
-		SingingKey: pkey,
-		TTL:        30 * time.Second,
-		Audiences:  []string{"sts.amazonaws.com"},
+		Issuer:          "http://localhost",
+		SingingKey:      private,
+		VerificationKey: public,
+		KeyID:           kid,
+		JWKSURL:         "https://localhost/keys",
+		TTL:             30 * time.Second,
+		Audiences:       []string{"sts.amazonaws.com"},
 	}
 
 	out := &storage.Dummy{}
@@ -48,26 +51,4 @@ func main() {
 	}
 
 	mgr.ManageLoop(context.Background())
-}
-
-func generateKey() *rsa.PrivateKey {
-
-	bitSize := 1024
-
-	key, err := rsa.GenerateKey(rand.Reader, bitSize)
-	if err != nil {
-		panic(err)
-	}
-
-	// Encode public key to PKCS#1 ASN.1 PEM.
-	pubPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "RSA PUBLIC KEY",
-			Bytes: x509.MarshalPKCS1PublicKey(key.Public().(*rsa.PublicKey)),
-		},
-	)
-
-	fmt.Println(string(pubPEM))
-
-	return key
 }
