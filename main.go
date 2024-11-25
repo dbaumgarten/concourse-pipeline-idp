@@ -24,11 +24,12 @@ func main() {
 		},
 	}
 
-	kid := "abcd"
-	public, private, _ := keys.GenerateKey()
-	keyset, _ := keys.CreateKeyset(kid, private)
-	handler := keys.CreateHTTPHandler(keyset)
-	go keys.ListenAndServe(":8080", handler)
+	jwk, kid, public, private, err := keys.GenerateJWK()
+	if err != nil {
+		panic(err)
+	}
+	server := keys.NewJWKSServer(jwk)
+	go server.ListenAndServe(":8080")
 
 	gen := token.Generator{
 		Issuer:          "http://localhost",

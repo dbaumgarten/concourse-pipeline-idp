@@ -11,54 +11,58 @@ import (
 	"github.com/MicahParks/jwkset"
 )
 
-func GenerateKey() (public, private interface{}, err error) {
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
+func GenerateJWK() (jwk jwkset.JWK, kid string, public *rsa.PublicKey, private interface{}, err error) {
+	kid = "abcd"
+
+	private, err = rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, nil, err
-	}
-	return key.Public(), key, nil
-}
-
-func CreateKeyset(kid string, key interface{}) (jwkset.Storage, error) {
-	jwkSet := jwkset.NewMemoryStorage()
-
-	options := jwkset.JWKOptions{
-		Metadata: jwkset.JWKMetadataOptions{
-			KID: kid,
-		},
+		return
 	}
 
 	// Create the JWK from the key and options.
-	jwk, err := jwkset.NewJWKFromKey(key, options)
+	jwk, err = jwkset.NewJWKFromKey(private, jwkset.JWKOptions{
+		Metadata: jwkset.JWKMetadataOptions{
+			KID: kid,
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JWK from key: %w", err)
+		err = fmt.Errorf("failed to create JWK from key: %w", err)
+		return
 	}
+
+	return
+}
+
+type JWKSServer struct {
+	JWKS jwkset.Storage
+}
+
+func NewJWKSServer(jwk jwkset.JWK) *JWKSServer {
+	jwkSet := jwkset.NewMemoryStorage()
 
 	ctx := context.Background()
 	// Write the key to the JWK Set storage.
-	err = jwkSet.KeyWrite(ctx, jwk)
+	err := jwkSet.KeyWrite(ctx, jwk)
 	if err != nil {
-		return nil, fmt.Errorf("failed to store RSA key: %w", err)
+		panic(err)
 	}
 
-	return jwkSet, nil
+	return &JWKSServer{
+		JWKS: jwkSet,
+	}
 }
 
-func CreateHTTPHandler(jwkSet jwkset.Storage) http.HandlerFunc {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		// TODO Cache the JWK Set so storage isn't called for every request.
-		response, err := jwkSet.JSONPublic(request.Context())
-		if err != nil {
-			log.Printf("Failed to get JWK Set JSON %s", err)
-			writer.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write(response)
-	})
+func (s JWKSServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	response, err := s.JWKS.JSONPublic(request.Context())
+	if err != nil {
+		log.Printf("Failed to get JWK Set JSON %s", err)
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = writer.Write(response)
 }
 
-func ListenAndServe(addr string, keysetHandler http.HandlerFunc) {
-	http.ListenAndServe(addr, keysetHandler)
+func (s JWKSServer) ListenAndServe(addr string) {
+	http.ListenAndServe(addr, s)
 }
