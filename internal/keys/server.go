@@ -14,10 +14,13 @@ import (
 func GenerateJWK() (jwk jwkset.JWK, kid string, public *rsa.PublicKey, private interface{}, err error) {
 	kid = "abcd"
 
-	private, err = rsa.GenerateKey(rand.Reader, 4096)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return
 	}
+
+	private = privateKey
+	public = &privateKey.PublicKey
 
 	// Create the JWK from the key and options.
 	jwk, err = jwkset.NewJWKFromKey(private, jwkset.JWKOptions{

@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"log"
 	"time"
 
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/controller"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/keys"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/manager"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/pipeline"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
@@ -18,10 +19,6 @@ func main() {
 			Team: "main",
 			Name: "foo",
 		},
-		{
-			Team: "other",
-			Name: "bar",
-		},
 	}
 
 	jwk, kid, public, private, err := keys.GenerateJWK()
@@ -29,7 +26,6 @@ func main() {
 		panic(err)
 	}
 	server := keys.NewJWKSServer(jwk)
-	go server.ListenAndServe(":8080")
 
 	gen := token.Generator{
 		Issuer:          "http://localhost",
@@ -41,15 +37,20 @@ func main() {
 		Audiences:       []string{"sts.amazonaws.com"},
 	}
 
+	ctx := context.Background()
+
 	out := &storage.Dummy{}
 
-	mgr := manager.Manager{
-		Interval:       10 * time.Second,
-		Pipelines:      pipelines,
-		TokenGenerator: gen,
-		Storage:        out,
-		RenewBefore:    11 * time.Second,
+	for _, p := range pipelines {
+		ctl := controller.Controller{
+			Pipeline:       p,
+			TokenGenerator: gen,
+			Storage:        out,
+			RenewBefore:    11 * time.Second,
+		}
+		log.Printf("Starting controller for pipeline %s", p)
+		go ctl.Run(ctx)
 	}
 
-	mgr.ManageLoop(context.Background())
+	server.ListenAndServe(":8080")
 }

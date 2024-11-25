@@ -22,9 +22,12 @@ type Generator struct {
 	TTL             time.Duration
 }
 
-func (g Generator) Generate(p pipeline.ConcoursePipeline) (string, error) {
+func (g Generator) Generate(p pipeline.ConcoursePipeline) (token string, validity time.Duration, err error) {
 	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+	validUntil := now.Add(g.TTL)
+	validity = g.TTL
+
+	jwttoken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss":      g.Issuer,
 		"aud":      g.Audiences,
 		"sub":      p.String(),
@@ -32,15 +35,16 @@ func (g Generator) Generate(p pipeline.ConcoursePipeline) (string, error) {
 		"pipeline": p.Name,
 		"iat":      now.Unix(),
 		"nbf":      now.Unix(),
-		"exp":      now.Add(g.TTL).Unix(),
+		"exp":      validUntil.Unix(),
 		"jti":      generateJTI(),
 	},
 	)
 
-	token.Header["kid"] = g.KeyID
-	token.Header["jku"] = g.JWKSURL
+	jwttoken.Header["kid"] = g.KeyID
+	jwttoken.Header["jku"] = g.JWKSURL
 
-	return token.SignedString(g.SingingKey)
+	token, err = jwttoken.SignedString(g.SingingKey)
+	return
 }
 
 func (g Generator) IsTokenStillValid(token string) (bool, time.Duration, error) {
