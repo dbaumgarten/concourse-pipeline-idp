@@ -22,10 +22,9 @@ type Generator struct {
 	TTL             time.Duration
 }
 
-func (g Generator) Generate(p pipeline.ConcoursePipeline) (token string, validity time.Duration, err error) {
+func (g Generator) Generate(p pipeline.ConcoursePipeline) (token string, validUntil time.Time, err error) {
 	now := time.Now()
-	validUntil := now.Add(g.TTL)
-	validity = g.TTL
+	validUntil = now.Add(g.TTL)
 
 	jwttoken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss":      g.Issuer,
@@ -47,7 +46,7 @@ func (g Generator) Generate(p pipeline.ConcoursePipeline) (token string, validit
 	return
 }
 
-func (g Generator) IsTokenStillValid(token string) (bool, time.Duration, error) {
+func (g Generator) IsTokenStillValid(token string) (bool, time.Time, error) {
 	parser := jwt.NewParser(jwt.WithIssuer(g.Issuer), jwt.WithExpirationRequired())
 	parsed, err := parser.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		return g.VerificationKey, nil
@@ -55,17 +54,17 @@ func (g Generator) IsTokenStillValid(token string) (bool, time.Duration, error) 
 
 	if err != nil {
 		if strings.Contains(err.Error(), "token is expired") {
-			return false, 0, nil
+			return false, time.Time{}, nil
 		}
-		return false, 0, err
+		return false, time.Time{}, err
 	}
 
 	exp, err := parsed.Claims.GetExpirationTime()
 	if err != nil {
-		return false, 0, err
+		return false, time.Time{}, err
 	}
 
-	return parsed.Valid, time.Until(exp.Time), err
+	return parsed.Valid, exp.Time, err
 }
 
 func generateJTI() string {

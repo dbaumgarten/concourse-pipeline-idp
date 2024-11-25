@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
@@ -32,8 +31,9 @@ func main() {
 		panic(err)
 	}
 	server := keys.NewJWKSServer(jwk)
+	go server.ListenAndServe(cfg.ListenAddr)
 
-	gen := token.Generator{
+	gen := &token.Generator{
 		Issuer:          cfg.ExternalURL,
 		SingingKey:      private,
 		VerificationKey: public,
@@ -47,16 +47,17 @@ func main() {
 
 	out := &storage.Dummy{}
 
-	for _, p := range cfg.Pipelines {
-		ctl := controller.Controller{
-			Pipeline:       p,
-			TokenGenerator: gen,
-			Storage:        out,
-			RenewBefore:    cfg.TokenOpts.RenewBefore,
-		}
-		log.Printf("Starting controller for pipeline %s", p)
-		go ctl.Run(ctx)
+	ctl := controller.Controller{
+		Pipelines:      cfg.Pipelines,
+		TokenGenerator: gen,
+		Storage:        out,
+		RenewBefore:    cfg.TokenOpts.RenewBefore,
 	}
 
-	server.ListenAndServe(":8080")
+	err = ctl.Run(ctx)
+	if err != nil {
+		fmt.Println("Error starting controller", err)
+		os.Exit(1)
+	}
+
 }
