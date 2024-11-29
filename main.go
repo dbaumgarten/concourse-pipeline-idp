@@ -10,6 +10,7 @@ import (
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/keys"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
+	"github.com/hashicorp/vault-client-go"
 )
 
 func main() {
@@ -30,8 +31,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	server := keys.NewJWKSServer(jwk)
-	go server.ListenAndServe(cfg.ListenAddr)
+
+	if cfg.ListenAddr != "" {
+		server := keys.NewJWKSServer(jwk)
+		go server.ListenAndServe(cfg.ListenAddr)
+	}
 
 	gen := &token.Generator{
 		Issuer:          cfg.ExternalURL,
@@ -45,7 +49,28 @@ func main() {
 
 	ctx := context.Background()
 
-	out := &storage.Dummy{}
+	var out storage.ReadWriter
+	switch cfg.Backend {
+	case "dev":
+		out = &storage.Dummy{}
+	case "vault":
+		vc, err := vault.New(
+			vault.WithAddress(cfg.VaultOpts.URL),
+		)
+		if err != nil {
+			fmt.Print(err)
+			os.Exit(1)
+		}
+		if cfg.VaultOpts.Token != "" {
+			vc.SetToken(cfg.VaultOpts.Token)
+		}
+		out = &storage.Vault{
+			VaultClient: vc,
+			MountPath:   cfg.VaultOpts.Path,
+			SecretName:  "idtoken",
+			SecretKey:   "value",
+		}
+	}
 
 	ctl := controller.Controller{
 		Pipelines:      cfg.Pipelines,

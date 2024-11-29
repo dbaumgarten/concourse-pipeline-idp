@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"path"
+	"strings"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/hashicorp/vault-client-go"
@@ -34,6 +35,9 @@ func (v Vault) ReadToken(ctx context.Context, p concourse.Pipeline) (string, err
 
 	secret, err := v.VaultClient.Secrets.KvV2Read(ctx, targetPath, vault.WithMountPath(v.MountPath))
 	if err != nil {
+		if strings.Contains(err.Error(), "Not Found") {
+			return "", ErrTokenNotFound
+		}
 		return "", err
 	}
 
