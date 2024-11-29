@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/pipeline"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -22,7 +22,7 @@ type Generator struct {
 	TTL             time.Duration
 }
 
-func (g Generator) Generate(p pipeline.ConcoursePipeline) (token string, validUntil time.Time, err error) {
+func (g Generator) Generate(p concourse.Pipeline) (token string, validUntil time.Time, err error) {
 	now := time.Now()
 	validUntil = now.Add(g.TTL)
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/pipeline"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -13,7 +13,7 @@ import (
 type Config struct {
 	ExternalURL string
 	ListenAddr  string
-	Pipelines   []pipeline.ConcoursePipeline
+	Pipelines   []concourse.Pipeline
 	TokenOpts
 }
 
@@ -53,7 +53,7 @@ func LoadConfig() (Config, error) {
 	cfg := Config{
 		ExternalURL: viper.GetString("externalURL"),
 		ListenAddr:  viper.GetString("listenAddr"),
-		Pipelines:   make([]pipeline.ConcoursePipeline, 0, 10),
+		Pipelines:   make([]concourse.Pipeline, 0, 10),
 		TokenOpts: TokenOpts{
 			TTL:         viper.GetDuration("token.ttl"),
 			RenewBefore: viper.GetDuration("token.renewBefore"),
@@ -64,7 +64,7 @@ func LoadConfig() (Config, error) {
 	for _, p := range viper.GetStringSlice("concourse.pipelines") {
 		parts := strings.Split(p, "/")
 		if len(parts) == 2 {
-			cfg.Pipelines = append(cfg.Pipelines, pipeline.ConcoursePipeline{
+			cfg.Pipelines = append(cfg.Pipelines, concourse.Pipeline{
 				Team: parts[0],
 				Name: parts[1],
 			})

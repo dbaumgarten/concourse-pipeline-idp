@@ -6,13 +6,13 @@ import (
 	"log"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/pipeline"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
 )
 
 type Controller struct {
-	Pipelines      []pipeline.ConcoursePipeline
+	Pipelines      []concourse.Pipeline
 	TokenGenerator *token.Generator
 	Storage        storage.ReadWriter
 	RenewBefore    time.Duration
@@ -78,7 +78,7 @@ func (c *Controller) populateCache(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) handlePipeline(ctx context.Context, p pipeline.ConcoursePipeline) (bool, error) {
+func (c *Controller) handlePipeline(ctx context.Context, p concourse.Pipeline) (bool, error) {
 	if c.pipelineNeedsNewToken(p) {
 		newToken, validUntil, err := c.TokenGenerator.Generate(p)
 		if err != nil {
@@ -100,7 +100,7 @@ func (c *Controller) handlePipeline(ctx context.Context, p pipeline.ConcoursePip
 	return false, nil
 }
 
-func (c Controller) pipelineNeedsNewToken(p pipeline.ConcoursePipeline) bool {
+func (c Controller) pipelineNeedsNewToken(p concourse.Pipeline) bool {
 	if cached, exists := c.cache[p.String()]; exists {
 		if time.Now().Before(cached.RenewAt) {
 			return false
