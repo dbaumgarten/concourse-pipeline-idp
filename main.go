@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
@@ -17,31 +18,12 @@ func main() {
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		fmt.Println("Error loading config: ", err)
-		os.Exit(1)
+		log.Fatal("Error loading config: ", err)
 	}
 
 	err = cfg.Validate()
 	if err != nil {
-		fmt.Println("Config is invalid: ", err)
-		os.Exit(1)
-	}
-
-	key, err := keys.GenerateNewKey()
-	if err != nil {
-		panic(err)
-	}
-
-	if cfg.ListenAddr != "" {
-		server := keys.NewJWKSServer(key)
-		go server.ListenAndServe(cfg.ListenAddr)
-	}
-
-	gen := &token.Generator{
-		Issuer:    cfg.ExternalURL,
-		Key:       key,
-		TTL:       cfg.TokenOpts.TTL,
-		Audiences: cfg.TokenOpts.Audiences,
+		log.Fatal("Config is invalid: ", err)
 	}
 
 	ctx := context.Background()
@@ -51,22 +33,40 @@ func main() {
 	case "dev":
 		out = &storage.Dummy{}
 	case "vault":
-		vc, err := vault.New(
-			vault.WithAddress(cfg.VaultOpts.URL),
-		)
+		out = getVaultStorage(cfg)
+	}
+
+	signingKeys, err := out.GetKeys(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if signingKeys.Len() == 0 {
+		log.Println("No existing keys found! Generating new one")
+		key, err := keys.GenerateNewKey()
 		if err != nil {
-			fmt.Print(err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
-		if cfg.VaultOpts.Token != "" {
-			vc.SetToken(cfg.VaultOpts.Token)
-		}
-		out = &storage.Vault{
-			VaultClient: vc,
-			MountPath:   cfg.VaultOpts.Path,
-			SecretName:  "idtoken",
-			SecretKey:   "value",
-		}
+		signingKeys.AddKey(key)
+		out.StoreKey(ctx, key)
+	} else {
+		log.Println("Found existing signing key(s)")
+	}
+
+	if cfg.ListenAddr != "" {
+		server := keys.NewJWKSServer(out)
+		go server.ListenAndServe(cfg.ListenAddr)
+	}
+
+	newestKey := keys.FindNewestKey(signingKeys)
+	kid, _ := newestKey.KeyID()
+	log.Println("Using key with kid:", kid)
+
+	gen := &token.Generator{
+		Issuer:    cfg.ExternalURL,
+		Key:       newestKey,
+		TTL:       cfg.TokenOpts.TTL,
+		Audiences: cfg.TokenOpts.Audiences,
 	}
 
 	ctl := controller.Controller{
@@ -81,5 +81,21 @@ func main() {
 		fmt.Println("Error starting controller", err)
 		os.Exit(1)
 	}
+}
 
+func getVaultStorage(cfg config.Config) storage.Storage {
+	vc, err := vault.New(
+		vault.WithAddress(cfg.VaultOpts.URL),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if cfg.VaultOpts.Token != "" {
+		vc.SetToken(cfg.VaultOpts.Token)
+	}
+	return &storage.Vault{
+		VaultClient:   vc,
+		ConcoursePath: cfg.VaultOpts.ConcoursePath,
+		ConfigPath:    cfg.VaultOpts.ConfigPath,
+	}
 }

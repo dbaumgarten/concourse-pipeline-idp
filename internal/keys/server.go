@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
@@ -24,6 +26,7 @@ func GenerateNewKey() (jwk.Key, error) {
 	}
 
 	key.Set("kid", generateKID())
+	key.Set("iat", time.Now().Unix())
 
 	return key, nil
 }
@@ -37,25 +40,54 @@ func generateKID() string {
 	return strconv.Itoa(int(num.Int64()))
 }
 
-type JWKSServer struct {
-	keyset jwk.Set
-}
+func FindNewestKey(keys jwk.Set) jwk.Key {
+	var newestKey jwk.Key
+	var newestKeyCreatedAt time.Time
 
-func NewJWKSServer(keys ...jwk.Key) JWKSServer {
-	set := jwk.NewSet()
-	for _, key := range keys {
-		pubkey, _ := key.PublicKey()
-		set.AddKey(pubkey)
+	for i := 0; i < keys.Len(); i++ {
+		key, _ := keys.Key(i)
+		if newestKey == nil {
+			newestKey = key
+			continue
+		}
+		var createdAt time.Time
+		key.Get("iat", &createdAt)
+		if createdAt.After(newestKeyCreatedAt) {
+			newestKey = key
+			newestKeyCreatedAt = createdAt
+		}
 	}
 
+	return newestKey
+}
+
+type JWKSServer struct {
+	store storage.Storage
+}
+
+func NewJWKSServer(store storage.Storage) JWKSServer {
 	return JWKSServer{
-		keyset: set,
+		store: store,
 	}
 }
 
 func (s JWKSServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+
+	keys, err := s.store.GetKeys(request.Context())
+	if err != nil {
+		http.Error(writer, err.Error(), 500)
+		return
+	}
+
+	pubKeys := jwk.NewSet()
+	for i := 0; i < keys.Len(); i++ {
+		key, _ := keys.Key(i)
+		pubKey, _ := key.PublicKey()
+		pubKeys.AddKey(pubKey)
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(s.keyset)
+	json.NewEncoder(writer).Encode(pubKeys)
 }
 
 func (s JWKSServer) ListenAndServe(addr string) {

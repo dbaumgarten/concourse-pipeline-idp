@@ -5,11 +5,12 @@ import (
 	"log"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 type Dummy struct {
 	tokens map[string]string
-	keys   []interface{}
+	keys   jwk.Set
 }
 
 func (o *Dummy) WriteToken(_ context.Context, p concourse.Pipeline, token string) error {
@@ -32,17 +33,17 @@ func (o *Dummy) ReadToken(_ context.Context, p concourse.Pipeline) (string, erro
 	return "", ErrTokenNotFound
 }
 
-func (o *Dummy) StoreKey(ctx context.Context, key interface{}) error {
+func (o *Dummy) StoreKey(ctx context.Context, key jwk.Key) error {
 	if o.keys == nil {
-		o.keys = make([]interface{}, 0, 1)
+		o.keys = jwk.NewSet()
 	}
-	o.keys = append(o.keys, key)
+	o.keys.AddKey(key)
 	return nil
 }
 
-func (o *Dummy) GetKeys(ctx context.Context) ([]interface{}, error) {
+func (o *Dummy) GetKeys(ctx context.Context) (jwk.Set, error) {
 	if o.keys == nil {
-		return make([]interface{}, 0), nil
+		return jwk.NewSet(), nil
 	}
 	return o.keys, nil
 }

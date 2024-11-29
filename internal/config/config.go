@@ -28,7 +28,8 @@ type VaultOpts struct {
 	Token         string
 	ApproleID     string
 	ApproleSecret string
-	Path          string
+	ConcoursePath string
+	ConfigPath    string
 }
 
 type TokenOpts struct {
@@ -39,7 +40,7 @@ type TokenOpts struct {
 
 func LoadConfig() (Config, error) {
 
-	flag.String("externalURL", "", "Under which URL the server will be reachable for external services")
+	flag.String("externalUrl", "", "Under which URL the server will be reachable for external services")
 	flag.String("listenAddr", ":8080", "Where to listen on for the JWKS Server")
 	flag.String("backend", "vault", "Which storage-backend to use [vault,dev]")
 
@@ -51,9 +52,10 @@ func LoadConfig() (Config, error) {
 
 	flag.String("vault.url", "", "URL under which vault is reachable")
 	flag.String("vault.token", "", "Token used to authenticate with vault")
-	flag.String("vault.approleid", "", "RoleID for approle authentication")
-	flag.String("vault.approlesecret", "", "Secret for approle authentication")
-	flag.String("vault.path", "/concourse", "Path uder which the concourse-secrets can be found in vault")
+	flag.String("vault.approleId", "", "RoleID for approle authentication")
+	flag.String("vault.approleSecret", "", "Secret for approle authentication")
+	flag.String("vault.concoursePath", "/concourse", "Path under which the concourse-secrets can be found in vault")
+	flag.String("vault.configPath", "/concourse/pipeline-idp", "Path under which the store config for this tool in vault")
 
 	flag.Parse()
 
@@ -72,7 +74,7 @@ func LoadConfig() (Config, error) {
 	}
 
 	cfg := Config{
-		ExternalURL: viper.GetString("externalURL"),
+		ExternalURL: viper.GetString("externalUrl"),
 		ListenAddr:  viper.GetString("listenAddr"),
 		Backend:     viper.GetString("backend"),
 		ConcourseOpts: ConcourseOpts{
@@ -86,9 +88,10 @@ func LoadConfig() (Config, error) {
 		VaultOpts: VaultOpts{
 			URL:           viper.GetString("vault.url"),
 			Token:         viper.GetString("vault.token"),
-			ApproleID:     viper.GetString("vault.approleid"),
-			ApproleSecret: viper.GetString("vault.approlesecret"),
-			Path:          viper.GetString("vault.path"),
+			ApproleID:     viper.GetString("vault.approleId"),
+			ApproleSecret: viper.GetString("vault.approleSecret"),
+			ConcoursePath: viper.GetString("vault.concoursePath"),
+			ConfigPath:    viper.GetString("vault.configPath"),
 		},
 	}
 
