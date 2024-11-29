@@ -43,3 +43,12 @@ func (v Vault) ReadToken(ctx context.Context, p concourse.Pipeline) (string, err
 
 	return secret.Data.Data[v.SecretKey].(string), nil
 }
+
+func (o Vault) StoreKey(ctx context.Context, key interface{}) error {
+
+	return nil
+}
+
+func (o Vault) GetKeys(ctx context.Context) ([]interface{}, error) {
+	return make([]interface{}, 0), nil
+}

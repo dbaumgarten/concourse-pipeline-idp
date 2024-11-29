@@ -1,69 +1,61 @@
 package keys
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"fmt"
-	"log"
+	"encoding/json"
+	"math"
+	"math/big"
 	"net/http"
+	"strconv"
 
-	"github.com/MicahParks/jwkset"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-func GenerateJWK() (jwk jwkset.JWK, kid string, public *rsa.PublicKey, private interface{}, err error) {
-	kid = "abcd"
-
+func GenerateNewKey() (jwk.Key, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	private = privateKey
-	public = &privateKey.PublicKey
-
-	// Create the JWK from the key and options.
-	jwk, err = jwkset.NewJWKFromKey(private, jwkset.JWKOptions{
-		Metadata: jwkset.JWKMetadataOptions{
-			KID: kid,
-		},
-	})
+	key, err := jwk.Import(privateKey)
 	if err != nil {
-		err = fmt.Errorf("failed to create JWK from key: %w", err)
-		return
+		return nil, err
 	}
 
-	return
+	key.Set("kid", generateKID())
+
+	return key, nil
+}
+
+func generateKID() string {
+	num, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
+	return strconv.Itoa(int(num.Int64()))
 }
 
 type JWKSServer struct {
-	JWKS jwkset.Storage
+	keyset jwk.Set
 }
 
-func NewJWKSServer(jwk jwkset.JWK) *JWKSServer {
-	jwkSet := jwkset.NewMemoryStorage()
-
-	ctx := context.Background()
-	// Write the key to the JWK Set storage.
-	err := jwkSet.KeyWrite(ctx, jwk)
-	if err != nil {
-		panic(err)
+func NewJWKSServer(keys ...jwk.Key) JWKSServer {
+	set := jwk.NewSet()
+	for _, key := range keys {
+		pubkey, _ := key.PublicKey()
+		set.AddKey(pubkey)
 	}
 
-	return &JWKSServer{
-		JWKS: jwkSet,
+	return JWKSServer{
+		keyset: set,
 	}
 }
 
 func (s JWKSServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	response, err := s.JWKS.JSONPublic(request.Context())
-	if err != nil {
-		log.Printf("Failed to get JWK Set JSON %s", err)
-		writer.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	writer.Header().Set("Content-Type", "application/json")
-	_, _ = writer.Write(response)
+	json.NewEncoder(writer).Encode(s.keyset)
 }
 
 func (s JWKSServer) ListenAndServe(addr string) {

@@ -14,7 +14,7 @@ import (
 type Controller struct {
 	Pipelines      []concourse.Pipeline
 	TokenGenerator *token.Generator
-	Storage        storage.ReadWriter
+	Storage        storage.Storage
 	RenewBefore    time.Duration
 
 	cache map[string]cacheEntry

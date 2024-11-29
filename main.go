@@ -27,29 +27,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	jwk, kid, public, private, err := keys.GenerateJWK()
+	key, err := keys.GenerateNewKey()
 	if err != nil {
 		panic(err)
 	}
 
 	if cfg.ListenAddr != "" {
-		server := keys.NewJWKSServer(jwk)
+		server := keys.NewJWKSServer(key)
 		go server.ListenAndServe(cfg.ListenAddr)
 	}
 
 	gen := &token.Generator{
-		Issuer:          cfg.ExternalURL,
-		SingingKey:      private,
-		VerificationKey: public,
-		KeyID:           kid,
-		JWKSURL:         cfg.ExternalURL + "/keys",
-		TTL:             cfg.TokenOpts.TTL,
-		Audiences:       cfg.TokenOpts.Audiences,
+		Issuer:    cfg.ExternalURL,
+		Key:       key,
+		TTL:       cfg.TokenOpts.TTL,
+		Audiences: cfg.TokenOpts.Audiences,
 	}
 
 	ctx := context.Background()
 
-	var out storage.ReadWriter
+	var out storage.Storage
 	switch cfg.Backend {
 	case "dev":
 		out = &storage.Dummy{}
