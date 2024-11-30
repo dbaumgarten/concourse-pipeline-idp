@@ -36,21 +36,15 @@ func main() {
 		out = getVaultStorage(cfg)
 	}
 
-	signingKeys, err := out.GetKeys(ctx)
+	signingKeys, existing, err := keys.LoadOrGenerateAndStoreKeys(ctx, out)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if signingKeys.Len() == 0 {
-		log.Println("No existing keys found! Generating new one")
-		key, err := keys.GenerateNewKey()
-		if err != nil {
-			log.Fatal(err)
-		}
-		signingKeys.AddKey(key)
-		out.StoreKey(ctx, key)
-	} else {
+	if existing {
 		log.Println("Found existing signing key(s)")
+	} else {
+		log.Println("No existing keys found! Generating new one")
 	}
 
 	if cfg.ListenAddr != "" {
