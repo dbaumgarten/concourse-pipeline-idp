@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 )
 
 type Config struct {
-	ExternalURL string
-	ListenAddr  string
-	Backend     string
-	ConcourseOpts
-	TokenOpts
-	VaultOpts
+	ExternalURL        string
+	ListenAddr         string
+	Backend            string
+	ConcourseOpts      ConcourseOpts
+	TokenOpts          TokenOpts
+	VaultOpts          VaultOpts
+	LeaderElectionOpts LeaderElectionOpts
 }
 
 type ConcourseOpts struct {
@@ -38,6 +40,12 @@ type TokenOpts struct {
 	Audiences   []string
 }
 
+type LeaderElectionOpts struct {
+	Enabled bool
+	Name    string
+	TTL     time.Duration
+}
+
 func LoadConfig() (Config, error) {
 
 	flag.String("externalUrl", "", "Under which URL the server will be reachable for external services")
@@ -56,6 +64,10 @@ func LoadConfig() (Config, error) {
 	flag.String("vault.approleSecret", "", "Secret for approle authentication")
 	flag.String("vault.concoursePath", "/concourse", "Path under which the concourse-secrets can be found in vault")
 	flag.String("vault.configPath", "/concourse/pipeline-idp", "Path under which the store config for this tool in vault")
+
+	flag.Bool("leaderElection.enabled", true, "Whether to use the storage-backend to elect a leader (required for HA-Setup)")
+	flag.String("leaderElection.name", "", "Name to use for this instance during leader-election. Must be unique, defaults to hostname")
+	flag.Duration("leaderElection.ttl", 1*time.Minute, "How long a leaderElection remains valid")
 
 	flag.Parse()
 
@@ -93,12 +105,25 @@ func LoadConfig() (Config, error) {
 			ConcoursePath: viper.GetString("vault.concoursePath"),
 			ConfigPath:    viper.GetString("vault.configPath"),
 		},
+		LeaderElectionOpts: LeaderElectionOpts{
+			Enabled: viper.GetBool("leaderElection.enabled"),
+			Name:    viper.GetString("leaderElection.name"),
+			TTL:     viper.GetDuration("leaderElection.ttl"),
+		},
+	}
+
+	if cfg.LeaderElectionOpts.Name == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+		cfg.LeaderElectionOpts.Name = hostname
 	}
 
 	for _, p := range viper.GetStringSlice("concourse.pipelines") {
 		parts := strings.Split(p, "/")
 		if len(parts) == 2 {
-			cfg.Pipelines = append(cfg.Pipelines, concourse.Pipeline{
+			cfg.ConcourseOpts.Pipelines = append(cfg.ConcourseOpts.Pipelines, concourse.Pipeline{
 				Team: parts[0],
 				Name: parts[1],
 			})
@@ -115,7 +140,7 @@ func (c Config) Validate() error {
 	if c.TokenOpts.RenewBefore >= c.TokenOpts.TTL {
 		return fmt.Errorf("token.renewBefore must be smaller than token.ttl")
 	}
-	if len(c.Pipelines) == 0 {
+	if len(c.ConcourseOpts.Pipelines) == 0 {
 		return fmt.Errorf("concourse.pipelines must have at least on element")
 	}
 	if c.Backend != "dev" && c.Backend != "vault" {

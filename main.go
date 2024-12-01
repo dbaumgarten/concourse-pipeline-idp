@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/controller"
@@ -36,6 +39,24 @@ func main() {
 		out = getVaultStorage(cfg)
 	}
 
+	if cfg.LeaderElectionOpts.Enabled {
+		log.Println("Trying to aquire leader lock")
+		err = storage.LockAndHold(ctx, out, cfg.LeaderElectionOpts.Name, cfg.LeaderElectionOpts.TTL, time.Duration(float64(cfg.LeaderElectionOpts.TTL)*0.1))
+		if err != nil {
+			log.Fatal("Error aquiring leader lock", err)
+		}
+		log.Println("Aquired leader lock")
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-c
+			log.Print("Releasing leader lock")
+			out.ReleaseLock(ctx)
+			os.Exit(0)
+		}()
+	}
+
 	signingKeys, existing, err := keys.LoadOrGenerateAndStoreKeys(ctx, out)
 	if err != nil {
 		log.Fatal(err)
@@ -64,7 +85,7 @@ func main() {
 	}
 
 	ctl := controller.Controller{
-		Pipelines:      cfg.Pipelines,
+		Pipelines:      cfg.ConcourseOpts.Pipelines,
 		TokenGenerator: gen,
 		Storage:        out,
 		RenewBefore:    cfg.TokenOpts.RenewBefore,

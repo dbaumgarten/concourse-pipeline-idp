@@ -17,7 +17,7 @@ import (
 
 func LoadOrGenerateAndStoreKeys(ctx context.Context, store storage.Storage) (jwk.Set, bool, error) {
 	signingKeys, err := store.GetKeys(ctx)
-	if err != nil {
+	if err != nil && err != storage.ErrNoKeysFound {
 		return nil, false, fmt.Errorf("error when trying to fetch existing keys: %w", err)
 	}
 

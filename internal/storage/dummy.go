@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -46,4 +47,12 @@ func (o *Dummy) GetKeys(ctx context.Context) (jwk.Set, error) {
 		return jwk.NewSet(), nil
 	}
 	return o.keys, nil
+}
+
+func (o *Dummy) Lock(ctx context.Context, name string, duration time.Duration) error {
+	return nil
+}
+
+func (o *Dummy) ReleaseLock(ctx context.Context) error {
+	return nil
 }

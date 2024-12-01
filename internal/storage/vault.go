@@ -3,8 +3,11 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"path"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/hashicorp/vault-client-go"
@@ -16,6 +19,12 @@ type Vault struct {
 	VaultClient   *vault.Client
 	ConcoursePath string
 	ConfigPath    string
+}
+
+type lock struct {
+	Name    string
+	Until   time.Time
+	Version int64
 }
 
 func (v Vault) WriteToken(ctx context.Context, p concourse.Pipeline, token string) error {
@@ -73,7 +82,7 @@ func (v Vault) GetKeys(ctx context.Context) (jwk.Set, error) {
 	keys, err := v.VaultClient.Secrets.KvV2Read(ctx, targetPath, vault.WithMountPath(mountpoint))
 	if err != nil {
 		if strings.Contains(err.Error(), "Not Found") {
-			return jwk.NewSet(), nil
+			return jwk.NewSet(), ErrNoKeysFound
 		}
 		return nil, err
 	}
@@ -89,6 +98,87 @@ func (v Vault) GetKeys(ctx context.Context) (jwk.Set, error) {
 		}
 	}
 	return set, nil
+}
+
+func (v Vault) Lock(ctx context.Context, name string, duration time.Duration) error {
+	for {
+		curentLock, err := v.getCurrentLock(ctx)
+		if err != nil {
+			return err
+		}
+
+		var currentVersion int64
+
+		if curentLock != nil {
+			if curentLock.Until.After(time.Now()) && curentLock.Name != name {
+				// sleep until the existing lock expires
+				duration := time.Until(curentLock.Until)
+				log.Printf("Lock is already held by %s, sleeping for %s until retry", curentLock.Name, duration.String())
+				time.Sleep(duration)
+			}
+			currentVersion = curentLock.Version
+		}
+
+		newlock := lock{
+			Name:    name,
+			Until:   time.Now().Add(duration),
+			Version: currentVersion,
+		}
+		err = v.tryAquireLock(ctx, newlock)
+		if err == nil {
+			return nil
+		}
+	}
+}
+
+func (v Vault) getCurrentLock(ctx context.Context) (*lock, error) {
+	mountpoint, basepath := splitPath(v.ConfigPath)
+	targetPath := path.Join(basepath, "lock")
+
+	resp, err := v.VaultClient.Secrets.KvV2Read(ctx, targetPath, vault.WithMountPath(mountpoint))
+	if err != nil {
+		if strings.Contains(err.Error(), "Not Found") {
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+
+	i, _ := strconv.ParseInt(resp.Data.Data["exp"].(string), 10, 64)
+	curVer := resp.Data.Metadata["version"]
+	curVerInt, _ := curVer.(json.Number).Int64()
+
+	return &lock{
+		Name:    resp.Data.Data["sub"].(string),
+		Until:   time.Unix(i, 0),
+		Version: curVerInt,
+	}, nil
+}
+
+func (v Vault) tryAquireLock(ctx context.Context, lock lock) error {
+	mountpoint, basepath := splitPath(v.ConfigPath)
+	targetPath := path.Join(basepath, "lock")
+
+	_, err := v.VaultClient.Secrets.KvV2Write(ctx, targetPath, schema.KvV2WriteRequest{
+		Options: map[string]interface{}{
+			"cas": lock.Version,
+		},
+		Data: map[string]interface{}{
+			"sub": lock.Name,
+			"exp": strconv.Itoa(int(lock.Until.Unix())),
+		}},
+		vault.WithMountPath(mountpoint),
+	)
+
+	return err
+}
+
+func (v Vault) ReleaseLock(ctx context.Context) error {
+	mountpoint, basepath := splitPath(v.ConfigPath)
+	targetPath := path.Join(basepath, "lock")
+
+	_, err := v.VaultClient.Secrets.KvV2DeleteMetadataAndAllVersions(ctx, targetPath, vault.WithMountPath(mountpoint))
+	return err
 }
 
 func splitPath(spath string) (string, string) {
