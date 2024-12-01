@@ -9,17 +9,38 @@ import (
 )
 
 type JWKSServer struct {
-	store storage.Storage
+	*http.ServeMux
+	store       storage.Storage
+	externalURL string
 }
 
-func NewJWKSServer(store storage.Storage) JWKSServer {
-	return JWKSServer{
-		store: store,
+func NewJWKSServer(store storage.Storage, externalURL string) JWKSServer {
+	s := JWKSServer{
+		ServeMux:    http.NewServeMux(),
+		store:       store,
+		externalURL: externalURL,
 	}
+
+	s.Handle("/.well-known/openid-configuration", http.HandlerFunc(s.serveDiscovery))
+	s.Handle("/keys", http.HandlerFunc(s.serveKeys))
+
+	return s
 }
 
-func (s JWKSServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (s JWKSServer) serveDiscovery(writer http.ResponseWriter, request *http.Request) {
+	resp := struct {
+		Issuer  string `json:"issuer"`
+		JWKSUri string `json:"jwks_uri"`
+	}{
+		Issuer:  s.externalURL,
+		JWKSUri: s.externalURL + "/keys",
+	}
 
+	writer.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(writer).Encode(resp)
+}
+
+func (s JWKSServer) serveKeys(writer http.ResponseWriter, request *http.Request) {
 	keys, err := s.store.GetKeys(request.Context())
 	if err != nil {
 		http.Error(writer, err.Error(), 500)

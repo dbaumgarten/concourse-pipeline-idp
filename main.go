@@ -69,7 +69,7 @@ func main() {
 	}
 
 	if cfg.ListenAddr != "" {
-		server := keys.NewJWKSServer(out)
+		server := keys.NewJWKSServer(out, cfg.ExternalURL)
 		go server.ListenAndServe(cfg.ListenAddr)
 	}
 
