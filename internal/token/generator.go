@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 type Generator struct {
 	Issuer    string
-	Key       jwk.Key
+	Key       jose.JSONWebKey
 	Audiences []string
 	TTL       time.Duration
 }
@@ -25,46 +24,59 @@ func (g Generator) Generate(p concourse.Pipeline) (token string, validUntil time
 	now := time.Now()
 	validUntil = now.Add(g.TTL)
 
-	unsigned, err := jwt.NewBuilder().
-		Issuer(g.Issuer).
-		IssuedAt(now).
-		NotBefore(now).
-		Audience(g.Audiences).
-		Subject(p.String()).
-		Expiration(validUntil).
-		JwtID(generateJTI()).
-		Claim("team", p.Team).
-		Claim("pipeline", p.Name).
-		Build()
+	signingKey := jose.SigningKey{
+		Algorithm: jose.SignatureAlgorithm(g.Key.Algorithm),
+		Key:       g.Key,
+	}
 
+	signer, err := jose.NewSigner(signingKey, &jose.SignerOptions{})
 	if err != nil {
 		return "", time.Time{}, err
 	}
 
-	signed, err := jwt.Sign(unsigned, jwt.WithKey(jwa.RS256(), g.Key))
+	claims := jwt.Claims{
+		Issuer:    g.Issuer,
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		Audience:  jwt.Audience(g.Audiences),
+		Subject:   p.String(),
+		Expiry:    jwt.NewNumericDate(validUntil),
+		ID:        generateJTI(),
+	}
+
+	customClaims := struct {
+		Team     string `json:"team"`
+		Pipeline string `json:"pipeline"`
+	}{
+		Team:     p.Team,
+		Pipeline: p.Name,
+	}
+
+	signed, err := jwt.Signed(signer).Claims(claims).Claims(customClaims).Serialize()
 	if err != nil {
 		return "", time.Time{}, err
 	}
 
-	return string(signed), validUntil, nil
+	return signed, validUntil, nil
 }
 
 func (g Generator) IsTokenStillValid(token string) (bool, time.Time, error) {
 
-	parsed, err := jwt.Parse([]byte(token), jwt.WithKey(jwa.RS256(), g.Key))
+	parsed, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.SignatureAlgorithm(g.Key.Algorithm)})
 	if err != nil {
-		if strings.Contains(err.Error(), "token is expired") {
+		return false, time.Time{}, err
+	}
+
+	claims := jwt.Claims{}
+	err = parsed.Claims(g.Key, &claims)
+	if err != nil {
+		if strings.Contains(err.Error(), "expired") {
 			return false, time.Time{}, nil
 		}
 		return false, time.Time{}, err
 	}
 
-	exp, exists := parsed.Expiration()
-	if !exists {
-		return false, time.Time{}, err
-	}
-
-	return true, exp, nil
+	return true, claims.Expiry.Time(), nil
 }
 
 func generateJTI() string {

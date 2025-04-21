@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 )
 
 type Dummy struct {
 	tokens map[string]string
-	keys   jwk.Set
+	jwks   jose.JSONWebKeySet
 }
 
 func (o *Dummy) WriteToken(_ context.Context, p concourse.Pipeline, token string) error {
@@ -34,19 +34,21 @@ func (o *Dummy) ReadToken(_ context.Context, p concourse.Pipeline) (string, erro
 	return "", ErrTokenNotFound
 }
 
-func (o *Dummy) StoreKey(ctx context.Context, key jwk.Key) error {
-	if o.keys == nil {
-		o.keys = jwk.NewSet()
+func (o *Dummy) StoreKey(ctx context.Context, key jose.JSONWebKey) error {
+	if o.jwks.Keys == nil {
+		o.jwks = jose.JSONWebKeySet{
+			Keys: make([]jose.JSONWebKey, 1),
+		}
 	}
-	o.keys.AddKey(key)
+	o.jwks.Keys[0] = key
 	return nil
 }
 
-func (o *Dummy) GetKeys(ctx context.Context) (jwk.Set, error) {
-	if o.keys == nil {
-		return jwk.NewSet(), nil
+func (o *Dummy) GetKeys(ctx context.Context) (jose.JSONWebKeySet, error) {
+	if o.jwks.Keys == nil {
+		return jose.JSONWebKeySet{}, nil
 	}
-	return o.keys, nil
+	return o.jwks, nil
 }
 
 func (o *Dummy) Lock(ctx context.Context, name string, duration time.Duration) error {

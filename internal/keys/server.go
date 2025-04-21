@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 )
 
 type JWKSServer struct {
@@ -41,17 +41,18 @@ func (s JWKSServer) serveDiscovery(writer http.ResponseWriter, request *http.Req
 }
 
 func (s JWKSServer) serveKeys(writer http.ResponseWriter, request *http.Request) {
-	keys, err := s.store.GetKeys(request.Context())
+	jwks, err := s.store.GetKeys(request.Context())
 	if err != nil {
 		http.Error(writer, err.Error(), 500)
 		return
 	}
 
-	pubKeys := jwk.NewSet()
-	for i := 0; i < keys.Len(); i++ {
-		key, _ := keys.Key(i)
-		pubKey, _ := key.PublicKey()
-		pubKeys.AddKey(pubKey)
+	pubKeys := jose.JSONWebKeySet{
+		Keys: make([]jose.JSONWebKey, len(jwks.Keys)),
+	}
+	for i, key := range jwks.Keys {
+		pubKey := key.Public()
+		pubKeys.Keys[i] = pubKey
 	}
 
 	writer.Header().Set("Content-Type", "application/json")

@@ -74,12 +74,11 @@ func main() {
 	}
 
 	newestKey := keys.FindNewestKey(signingKeys)
-	kid, _ := newestKey.KeyID()
-	log.Println("Using key with kid:", kid)
+	log.Println("Using key with kid:", newestKey.KeyID)
 
 	gen := &token.Generator{
 		Issuer:    cfg.ExternalURL,
-		Key:       newestKey,
+		Key:       *newestKey,
 		TTL:       cfg.TokenOpts.TTL,
 		Audiences: cfg.TokenOpts.Audiences,
 	}

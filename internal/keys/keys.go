@@ -5,32 +5,28 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
-	"log"
-	"math"
-	"math/big"
 	"strconv"
 	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 )
 
-func LoadOrGenerateAndStoreKeys(ctx context.Context, store storage.Storage) (jwk.Set, bool, error) {
+func LoadOrGenerateAndStoreKeys(ctx context.Context, store storage.Storage) (jose.JSONWebKeySet, bool, error) {
 	signingKeys, err := store.GetKeys(ctx)
 	if err != nil && err != storage.ErrNoKeysFound {
-		return nil, false, fmt.Errorf("error when trying to fetch existing keys: %w", err)
+		return jose.JSONWebKeySet{}, false, fmt.Errorf("error when trying to fetch existing keys: %w", err)
 	}
 
-	if signingKeys.Len() == 0 {
-		log.Println("No existing keys found! Generating new one")
+	if len(signingKeys.Keys) == 0 {
 		key, err := GenerateNewKey()
 		if err != nil {
-			return nil, false, fmt.Errorf("error when trying to generate new key: %w", err)
+			return jose.JSONWebKeySet{}, false, fmt.Errorf("error when trying to generate new key: %w", err)
 		}
-		signingKeys.AddKey(key)
-		err = store.StoreKey(ctx, key)
+		signingKeys.Keys = append(signingKeys.Keys, *key)
+		err = store.StoreKey(ctx, *key)
 		if err != nil {
-			return nil, false, fmt.Errorf("error when trying to store newly generated key: %w", err)
+			return jose.JSONWebKeySet{}, false, fmt.Errorf("error when trying to store newly generated key: %w", err)
 		}
 		return signingKeys, false, nil
 	}
@@ -38,47 +34,33 @@ func LoadOrGenerateAndStoreKeys(ctx context.Context, store storage.Storage) (jwk
 	return signingKeys, true, nil
 }
 
-func GenerateNewKey() (jwk.Key, error) {
+func GenerateNewKey() (*jose.JSONWebKey, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := jwk.Import(privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	key.Set("kid", generateKID())
-	key.Set("iat", time.Now().Unix())
-
-	return key, nil
+	return &jose.JSONWebKey{
+		KeyID:     generateKID(),
+		Algorithm: "RS256",
+		Key:       privateKey,
+		Use:       "sign",
+	}, nil
 }
 
 func generateKID() string {
-	num, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		// should never happen
-		panic(err)
-	}
-	return strconv.Itoa(int(num.Int64()))
+	return strconv.FormatInt(time.Now().Unix(), 10)
 }
 
-func FindNewestKey(keys jwk.Set) jwk.Key {
-	var newestKey jwk.Key
-	var newestKeyCreatedAt time.Time
+func FindNewestKey(jwks jose.JSONWebKeySet) *jose.JSONWebKey {
+	var newestKey *jose.JSONWebKey
+	var highestKeyID string
 
-	for i := 0; i < keys.Len(); i++ {
-		key, _ := keys.Key(i)
-		if newestKey == nil {
-			newestKey = key
-			continue
-		}
-		var createdAt time.Time
-		key.Get("iat", &createdAt)
-		if createdAt.After(newestKeyCreatedAt) {
-			newestKey = key
-			newestKeyCreatedAt = createdAt
+	for _, jwk := range jwks.Keys {
+		key := jwk
+		if highestKeyID == "" || key.KeyID > highestKeyID {
+			newestKey = &key
+			highestKeyID = key.KeyID
 		}
 	}
 

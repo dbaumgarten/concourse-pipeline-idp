@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 type Vault struct {
@@ -55,19 +55,18 @@ func (v Vault) ReadToken(ctx context.Context, p concourse.Pipeline) (string, err
 	return secret.Data.Data["value"].(string), nil
 }
 
-func (v Vault) StoreKey(ctx context.Context, key jwk.Key) error {
+func (v Vault) StoreKey(ctx context.Context, key jose.JSONWebKey) error {
 	encoded, err := json.Marshal(key)
 	if err != nil {
 		return err
 	}
 
-	kid, _ := key.KeyID()
 	mountpoint, basepath := splitPath(v.ConfigPath)
 	targetPath := path.Join(basepath, "keys")
 
 	_, err = v.VaultClient.Secrets.KvV2Write(ctx, targetPath, schema.KvV2WriteRequest{
 		Data: map[string]interface{}{
-			kid: string(encoded),
+			key.KeyID: string(encoded),
 		}},
 		vault.WithMountPath(mountpoint),
 	)
@@ -75,29 +74,29 @@ func (v Vault) StoreKey(ctx context.Context, key jwk.Key) error {
 	return err
 }
 
-func (v Vault) GetKeys(ctx context.Context) (jwk.Set, error) {
+func (v Vault) GetKeys(ctx context.Context) (jose.JSONWebKeySet, error) {
 	mountpoint, basepath := splitPath(v.ConfigPath)
 	targetPath := path.Join(basepath, "keys")
 
 	keys, err := v.VaultClient.Secrets.KvV2Read(ctx, targetPath, vault.WithMountPath(mountpoint))
 	if err != nil {
 		if strings.Contains(err.Error(), "Not Found") {
-			return jwk.NewSet(), ErrNoKeysFound
+			return jose.JSONWebKeySet{}, ErrNoKeysFound
 		}
-		return nil, err
+		return jose.JSONWebKeySet{}, err
 	}
-	set := jwk.NewSet()
+	jsonWebKeys := make([]jose.JSONWebKey, len(keys.Data.Data))
+	i := 0
 	for _, key := range keys.Data.Data {
-		parsed, err := jwk.ParseKey([]byte(key.(string)))
+		err = json.Unmarshal([]byte(key.(string)), &jsonWebKeys[i])
 		if err != nil {
-			return nil, err
+			return jose.JSONWebKeySet{}, err
 		}
-		err = set.AddKey(parsed)
-		if err != nil {
-			return nil, err
-		}
+		i += 1
 	}
-	return set, nil
+	return jose.JSONWebKeySet{
+		Keys: jsonWebKeys,
+	}, nil
 }
 
 func (v Vault) Lock(ctx context.Context, name string, duration time.Duration) error {

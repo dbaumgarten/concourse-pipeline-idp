@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 )
 
 var ErrTokenNotFound = errors.New("no stored token found for pipeline")
@@ -17,8 +17,8 @@ type Storage interface {
 	ReadToken(ctx context.Context, p concourse.Pipeline) (string, error)
 	WriteToken(ctx context.Context, p concourse.Pipeline, token string) error
 
-	StoreKey(ctx context.Context, key jwk.Key) error
-	GetKeys(ctx context.Context) (jwk.Set, error)
+	StoreKey(ctx context.Context, key jose.JSONWebKey) error
+	GetKeys(ctx context.Context) (jose.JSONWebKeySet, error)
 
 	Lock(ctx context.Context, name string, duration time.Duration) error
 	ReleaseLock(ctx context.Context) error
