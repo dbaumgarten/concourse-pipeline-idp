@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
@@ -27,9 +27,9 @@ type lock struct {
 	Version int64
 }
 
-func (v Vault) WriteToken(ctx context.Context, p concourse.Pipeline, token string) error {
+func (v Vault) WriteToken(ctx context.Context, t config.TokenConfig, token string) error {
 	mountpoint, basepath := splitPath(v.ConcoursePath)
-	targetPath := path.Join(basepath, p.Team, p.Name, "idtoken")
+	targetPath := path.Join(basepath, t.Team, t.Pipeline, t.Path)
 
 	_, err := v.VaultClient.Secrets.KvV2Write(ctx, targetPath, schema.KvV2WriteRequest{
 		Data: map[string]interface{}{
@@ -40,9 +40,9 @@ func (v Vault) WriteToken(ctx context.Context, p concourse.Pipeline, token strin
 	return err
 }
 
-func (v Vault) ReadToken(ctx context.Context, p concourse.Pipeline) (string, error) {
+func (v Vault) ReadToken(ctx context.Context, t config.TokenConfig) (string, error) {
 	mountpoint, basepath := splitPath(v.ConcoursePath)
-	targetPath := path.Join(basepath, p.Team, p.Name, "idtoken")
+	targetPath := path.Join(basepath, t.Team, t.Pipeline, t.Path)
 
 	secret, err := v.VaultClient.Secrets.KvV2Read(ctx, targetPath, vault.WithMountPath(mountpoint))
 	if err != nil {

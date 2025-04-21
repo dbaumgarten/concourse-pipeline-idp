@@ -6,16 +6,15 @@ import (
 	"log"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
 )
 
 type Controller struct {
-	Pipelines      []concourse.Pipeline
+	TokenConfigs   []config.TokenConfig
 	TokenGenerator *token.Generator
 	Storage        storage.Storage
-	RenewBefore    time.Duration
 
 	cache map[string]cacheEntry
 }
@@ -45,12 +44,12 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 		}
 	}
 
-	for _, p := range c.Pipelines {
-		renewed, err := c.handlePipeline(ctx, p)
+	for _, t := range c.TokenConfigs {
+		renewed, err := c.handleTokenConfig(ctx, t)
 		if err != nil {
-			log.Printf("Error when renewing token for pipeline %s", p)
+			log.Printf("Error when renewing token %s", t)
 		} else if renewed {
-			log.Printf("Renewed token for pipeline %s", p)
+			log.Printf("Renewed token %s", t)
 		}
 	}
 	return nil
@@ -59,15 +58,15 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 func (c *Controller) populateCache(ctx context.Context) error {
 	c.cache = make(map[string]cacheEntry)
 
-	for _, p := range c.Pipelines {
-		currentToken, err := c.Storage.ReadToken(ctx, p)
+	for _, t := range c.TokenConfigs {
+		currentToken, err := c.Storage.ReadToken(ctx, t)
 		if err == nil {
 			isValid, validUntil, err := c.TokenGenerator.IsTokenStillValid(currentToken)
 			if err == nil && isValid {
-				log.Printf("Found existing valid token for pipeline %s", p)
-				c.cache[p.String()] = cacheEntry{
+				log.Printf("Found existing valid token %s", t)
+				c.cache[t.String()] = cacheEntry{
 					Token:   currentToken,
-					RenewAt: c.calculateRenewalTime(validUntil),
+					RenewAt: c.calculateRenewalTime(validUntil, t.RenewBefore),
 				}
 			}
 		} else if err != storage.ErrTokenNotFound {
@@ -78,21 +77,21 @@ func (c *Controller) populateCache(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) handlePipeline(ctx context.Context, p concourse.Pipeline) (bool, error) {
-	if c.pipelineNeedsNewToken(p) {
-		newToken, validUntil, err := c.TokenGenerator.Generate(p)
+func (c *Controller) handleTokenConfig(ctx context.Context, t config.TokenConfig) (bool, error) {
+	if c.tokenNeedsToBeRenewed(t) {
+		newToken, validUntil, err := c.TokenGenerator.Generate(t)
 		if err != nil {
-			return false, fmt.Errorf("error when generating new token for pipeline %s: %w", p, err)
+			return false, fmt.Errorf("error when generating new token %s: %w", t, err)
 		}
 
-		err = c.Storage.WriteToken(ctx, p, newToken)
+		err = c.Storage.WriteToken(ctx, t, newToken)
 		if err != nil {
-			return false, fmt.Errorf("error when storing new token for pipeline %s: %w", p, err)
+			return false, fmt.Errorf("error when storing new token %s: %w", t, err)
 		}
 
-		c.cache[p.String()] = cacheEntry{
+		c.cache[t.String()] = cacheEntry{
 			Token:   newToken,
-			RenewAt: c.calculateRenewalTime(validUntil),
+			RenewAt: c.calculateRenewalTime(validUntil, t.RenewBefore),
 		}
 
 		return true, nil
@@ -100,8 +99,8 @@ func (c *Controller) handlePipeline(ctx context.Context, p concourse.Pipeline) (
 	return false, nil
 }
 
-func (c Controller) pipelineNeedsNewToken(p concourse.Pipeline) bool {
-	if cached, exists := c.cache[p.String()]; exists {
+func (c Controller) tokenNeedsToBeRenewed(t config.TokenConfig) bool {
+	if cached, exists := c.cache[t.String()]; exists {
 		if time.Now().Before(cached.RenewAt) {
 			return false
 		}
@@ -109,8 +108,8 @@ func (c Controller) pipelineNeedsNewToken(p concourse.Pipeline) bool {
 	return true
 }
 
-func (c Controller) calculateRenewalTime(validUntil time.Time) time.Time {
-	return validUntil.Add(-(c.RenewBefore - 2*time.Second))
+func (c Controller) calculateRenewalTime(validUntil time.Time, renewBefore time.Duration) time.Time {
+	return validUntil.Add(-(renewBefore - 2*time.Second))
 }
 
 func (c Controller) getNextRenewalTime() time.Time {

@@ -77,17 +77,14 @@ func main() {
 	log.Println("Using key with kid:", newestKey.KeyID)
 
 	gen := &token.Generator{
-		Issuer:    cfg.ExternalURL,
-		Key:       *newestKey,
-		TTL:       cfg.TokenOpts.TTL,
-		Audiences: cfg.TokenOpts.Audiences,
+		Issuer: cfg.ExternalURL,
+		Key:    *newestKey,
 	}
 
 	ctl := controller.Controller{
-		Pipelines:      cfg.ConcourseOpts.Pipelines,
 		TokenGenerator: gen,
 		Storage:        out,
-		RenewBefore:    cfg.TokenOpts.RenewBefore,
+		TokenConfigs:   cfg.Tokens,
 	}
 
 	err = ctl.Run(ctx)

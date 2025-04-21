@@ -3,10 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -15,14 +13,9 @@ type Config struct {
 	ExternalURL        string
 	ListenAddr         string
 	Backend            string
-	ConcourseOpts      ConcourseOpts
-	TokenOpts          TokenOpts
 	VaultOpts          VaultOpts
 	LeaderElectionOpts LeaderElectionOpts
-}
-
-type ConcourseOpts struct {
-	Pipelines []concourse.Pipeline
+	Tokens             []TokenConfig
 }
 
 type VaultOpts struct {
@@ -32,12 +25,6 @@ type VaultOpts struct {
 	ApproleSecret string
 	ConcoursePath string
 	ConfigPath    string
-}
-
-type TokenOpts struct {
-	TTL         time.Duration
-	RenewBefore time.Duration
-	Audiences   []string
 }
 
 type LeaderElectionOpts struct {
@@ -53,10 +40,6 @@ func LoadConfig() (Config, error) {
 	flag.String("backend", "vault", "Which storage-backend to use [vault,dev]")
 
 	flag.StringSlice("concourse.pipelines", []string{}, "List of pipelines in format <team>/<pipeline> for which to manage tokens")
-
-	flag.Duration("token.ttl", 1*time.Hour, "How long issued tokens are valid")
-	flag.Duration("token.renewBefore", 30*time.Minute, "How long before their expiry tokens should be renewed")
-	flag.StringSlice("token.audiences", []string{"concourse-pipeline-idp"}, "Which audiences to include in the tokens")
 
 	flag.String("vault.url", "", "URL under which vault is reachable")
 	flag.String("vault.token", "", "Token used to authenticate with vault")
@@ -89,14 +72,6 @@ func LoadConfig() (Config, error) {
 		ExternalURL: viper.GetString("externalUrl"),
 		ListenAddr:  viper.GetString("listenAddr"),
 		Backend:     viper.GetString("backend"),
-		ConcourseOpts: ConcourseOpts{
-			Pipelines: make([]concourse.Pipeline, 0, 10),
-		},
-		TokenOpts: TokenOpts{
-			TTL:         viper.GetDuration("token.ttl"),
-			RenewBefore: viper.GetDuration("token.renewBefore"),
-			Audiences:   viper.GetStringSlice("token.audiences"),
-		},
 		VaultOpts: VaultOpts{
 			URL:           viper.GetString("vault.url"),
 			Token:         viper.GetString("vault.token"),
@@ -110,6 +85,15 @@ func LoadConfig() (Config, error) {
 			Name:    viper.GetString("leaderElection.name"),
 			TTL:     viper.GetDuration("leaderElection.ttl"),
 		},
+		Tokens: []TokenConfig{},
+	}
+	err = viper.UnmarshalKey("tokens", &cfg.Tokens)
+	if err != nil {
+		return Config{}, err
+	}
+
+	for i := range cfg.Tokens {
+		cfg.Tokens[i].FillWithDefaults()
 	}
 
 	if cfg.LeaderElectionOpts.Name == "" {
@@ -120,28 +104,12 @@ func LoadConfig() (Config, error) {
 		cfg.LeaderElectionOpts.Name = hostname
 	}
 
-	for _, p := range viper.GetStringSlice("concourse.pipelines") {
-		parts := strings.Split(p, "/")
-		if len(parts) == 2 {
-			cfg.ConcourseOpts.Pipelines = append(cfg.ConcourseOpts.Pipelines, concourse.Pipeline{
-				Team: parts[0],
-				Name: parts[1],
-			})
-		}
-	}
-
 	return cfg, nil
 }
 
 func (c Config) Validate() error {
 	if c.ExternalURL == "" {
 		return fmt.Errorf("externalURL must be set")
-	}
-	if c.TokenOpts.RenewBefore >= c.TokenOpts.TTL {
-		return fmt.Errorf("token.renewBefore must be smaller than token.ttl")
-	}
-	if len(c.ConcourseOpts.Pipelines) == 0 {
-		return fmt.Errorf("concourse.pipelines must have at least on element")
 	}
 	if c.Backend != "dev" && c.Backend != "vault" {
 		return fmt.Errorf("backend must either be dev or vault")
@@ -152,6 +120,11 @@ func (c Config) Validate() error {
 		}
 		if c.VaultOpts.Token == "" && (c.VaultOpts.ApproleID == "" || c.VaultOpts.ApproleSecret == "") {
 			return fmt.Errorf("vault.token or vault.approleid+vault.approlesecret must be set")
+		}
+	}
+	for _, tokenConfig := range c.Tokens {
+		if err := tokenConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid token config: %w", err)
 		}
 	}
 	return nil

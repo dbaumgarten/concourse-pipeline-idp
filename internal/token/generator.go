@@ -8,21 +8,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 )
 
 type Generator struct {
-	Issuer    string
-	Key       jose.JSONWebKey
-	Audiences []string
-	TTL       time.Duration
+	Issuer string
+	Key    jose.JSONWebKey
 }
 
-func (g Generator) Generate(p concourse.Pipeline) (token string, validUntil time.Time, err error) {
+func (g Generator) Generate(conf config.TokenConfig) (token string, validUntil time.Time, err error) {
 	now := time.Now()
-	validUntil = now.Add(g.TTL)
+	validUntil = now.Add(conf.ExpiresIn)
 
 	signingKey := jose.SigningKey{
 		Algorithm: jose.SignatureAlgorithm(g.Key.Algorithm),
@@ -38,8 +37,8 @@ func (g Generator) Generate(p concourse.Pipeline) (token string, validUntil time
 		Issuer:    g.Issuer,
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now),
-		Audience:  jwt.Audience(g.Audiences),
-		Subject:   p.String(),
+		Audience:  jwt.Audience(conf.Audience),
+		Subject:   conf.Subject(),
 		Expiry:    jwt.NewNumericDate(validUntil),
 		ID:        generateJTI(),
 	}
@@ -48,8 +47,8 @@ func (g Generator) Generate(p concourse.Pipeline) (token string, validUntil time
 		Team     string `json:"team"`
 		Pipeline string `json:"pipeline"`
 	}{
-		Team:     p.Team,
-		Pipeline: p.Name,
+		Team:     conf.Team,
+		Pipeline: conf.Pipeline,
 	}
 
 	signed, err := jwt.Signed(signer).Claims(claims).Claims(customClaims).Serialize()

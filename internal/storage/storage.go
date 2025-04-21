@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/concourse"
+	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/go-jose/go-jose/v4"
 )
 
@@ -14,8 +14,8 @@ var ErrTokenNotFound = errors.New("no stored token found for pipeline")
 var ErrNoKeysFound = errors.New("could not find existing signing keys")
 
 type Storage interface {
-	ReadToken(ctx context.Context, p concourse.Pipeline) (string, error)
-	WriteToken(ctx context.Context, p concourse.Pipeline, token string) error
+	ReadToken(ctx context.Context, t config.TokenConfig) (string, error)
+	WriteToken(ctx context.Context, t config.TokenConfig, token string) error
 
 	StoreKey(ctx context.Context, key jose.JSONWebKey) error
 	GetKeys(ctx context.Context) (jose.JSONWebKeySet, error)
