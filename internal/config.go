@@ -1,4 +1,4 @@
-package config
+package internal
 
 import (
 	"fmt"
@@ -34,7 +34,6 @@ type LeaderElectionOpts struct {
 }
 
 func LoadConfig() (Config, error) {
-
 	flag.String("externalUrl", "", "Under which URL the server will be reachable for external services")
 	flag.String("listenAddr", ":8080", "Where to listen on for the JWKS Server")
 	flag.String("backend", "vault", "Which storage-backend to use [vault,dev]")

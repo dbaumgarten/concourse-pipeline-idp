@@ -9,17 +9,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/controller"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/keys"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
+	cpidp "github.com/dbaumgarten/concourse-pipeline-idp/internal"
 	"github.com/hashicorp/vault-client-go"
 )
 
 func main() {
 
-	cfg, err := config.LoadConfig()
+	cfg, err := cpidp.LoadConfig()
 	if err != nil {
 		log.Fatal("Error loading config: ", err)
 	}
@@ -31,17 +27,17 @@ func main() {
 
 	ctx := context.Background()
 
-	var out storage.Storage
+	var out cpidp.Storage
 	switch cfg.Backend {
 	case "dev":
-		out = &storage.Dummy{}
+		out = &cpidp.Dummy{}
 	case "vault":
 		out = getVaultStorage(cfg)
 	}
 
 	if cfg.LeaderElectionOpts.Enabled {
 		log.Println("Trying to aquire leader lock")
-		err = storage.LockAndHold(ctx, out, cfg.LeaderElectionOpts.Name, cfg.LeaderElectionOpts.TTL, time.Duration(float64(cfg.LeaderElectionOpts.TTL)*0.1))
+		err = cpidp.AquireLockAndHold(ctx, out, cfg.LeaderElectionOpts.Name, cfg.LeaderElectionOpts.TTL, time.Duration(float64(cfg.LeaderElectionOpts.TTL)*0.1))
 		if err != nil {
 			log.Fatal("Error aquiring leader lock", err)
 		}
@@ -57,7 +53,7 @@ func main() {
 		}()
 	}
 
-	signingKeys, existing, err := keys.LoadOrGenerateAndStoreKeys(ctx, out)
+	signingKeys, existing, err := cpidp.LoadOrGenerateAndStoreKeys(ctx, out)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,19 +65,19 @@ func main() {
 	}
 
 	if cfg.ListenAddr != "" {
-		server := keys.NewJWKSServer(out, cfg.ExternalURL)
+		server := cpidp.NewJWKSServer(out, cfg.ExternalURL)
 		go server.ListenAndServe(cfg.ListenAddr)
 	}
 
-	newestKey := keys.FindNewestKey(signingKeys)
+	newestKey := cpidp.FindNewestKey(signingKeys)
 	log.Println("Using key with kid:", newestKey.KeyID)
 
-	gen := &token.Generator{
+	gen := &cpidp.TokenGenerator{
 		Issuer: cfg.ExternalURL,
 		Key:    *newestKey,
 	}
 
-	ctl := controller.Controller{
+	ctl := cpidp.Controller{
 		TokenGenerator: gen,
 		Storage:        out,
 		TokenConfigs:   cfg.Tokens,
@@ -94,7 +90,7 @@ func main() {
 	}
 }
 
-func getVaultStorage(cfg config.Config) storage.Storage {
+func getVaultStorage(cfg cpidp.Config) cpidp.Storage {
 	vc, err := vault.New(
 		vault.WithAddress(cfg.VaultOpts.URL),
 	)
@@ -104,7 +100,7 @@ func getVaultStorage(cfg config.Config) storage.Storage {
 	if cfg.VaultOpts.Token != "" {
 		vc.SetToken(cfg.VaultOpts.Token)
 	}
-	return &storage.Vault{
+	return &cpidp.Vault{
 		VaultClient:   vc,
 		ConcoursePath: cfg.VaultOpts.ConcoursePath,
 		ConfigPath:    cfg.VaultOpts.ConfigPath,

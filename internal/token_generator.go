@@ -1,4 +1,4 @@
-package token
+package internal
 
 import (
 	"crypto/rand"
@@ -10,16 +10,14 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
-
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 )
 
-type Generator struct {
+type TokenGenerator struct {
 	Issuer string
 	Key    jose.JSONWebKey
 }
 
-func (g Generator) Generate(conf config.TokenConfig) (token string, validUntil time.Time, err error) {
+func (g TokenGenerator) Generate(conf TokenConfig) (token string, validUntil time.Time, err error) {
 	now := time.Now()
 	validUntil = now.Add(conf.ExpiresIn)
 
@@ -59,7 +57,7 @@ func (g Generator) Generate(conf config.TokenConfig) (token string, validUntil t
 	return signed, validUntil, nil
 }
 
-func (g Generator) IsTokenStillValid(token string) (bool, time.Time, error) {
+func (g TokenGenerator) IsTokenStillValid(token string) (bool, time.Time, error) {
 
 	parsed, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.SignatureAlgorithm(g.Key.Algorithm)})
 	if err != nil {

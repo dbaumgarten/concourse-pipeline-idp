@@ -1,4 +1,4 @@
-package keys
+package internal
 
 import (
 	"context"
@@ -8,13 +8,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/go-jose/go-jose/v4"
 )
 
-func LoadOrGenerateAndStoreKeys(ctx context.Context, store storage.Storage) (jose.JSONWebKeySet, bool, error) {
+func LoadOrGenerateAndStoreKeys(ctx context.Context, store Storage) (jose.JSONWebKeySet, bool, error) {
 	signingKeys, err := store.GetKeys(ctx)
-	if err != nil && err != storage.ErrNoKeysFound {
+	if err != nil && err != ErrNoKeysFound {
 		return jose.JSONWebKeySet{}, false, fmt.Errorf("error when trying to fetch existing keys: %w", err)
 	}
 

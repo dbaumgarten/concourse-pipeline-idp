@@ -1,20 +1,16 @@
-package controller
+package internal
 
 import (
 	"context"
 	"fmt"
 	"log"
 	"time"
-
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/token"
 )
 
 type Controller struct {
-	TokenConfigs   []config.TokenConfig
-	TokenGenerator *token.Generator
-	Storage        storage.Storage
+	TokenConfigs   []TokenConfig
+	TokenGenerator *TokenGenerator
+	Storage        Storage
 
 	cache map[string]cacheEntry
 }
@@ -69,7 +65,7 @@ func (c *Controller) populateCache(ctx context.Context) error {
 					RenewAt: c.calculateRenewalTime(validUntil, t.RenewBefore),
 				}
 			}
-		} else if err != storage.ErrTokenNotFound {
+		} else if err != ErrTokenNotFound {
 			return err
 		}
 	}
@@ -77,7 +73,7 @@ func (c *Controller) populateCache(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) handleTokenConfig(ctx context.Context, t config.TokenConfig) (bool, error) {
+func (c *Controller) handleTokenConfig(ctx context.Context, t TokenConfig) (bool, error) {
 	if c.tokenNeedsToBeRenewed(t) {
 		newToken, validUntil, err := c.TokenGenerator.Generate(t)
 		if err != nil {
@@ -99,7 +95,7 @@ func (c *Controller) handleTokenConfig(ctx context.Context, t config.TokenConfig
 	return false, nil
 }
 
-func (c Controller) tokenNeedsToBeRenewed(t config.TokenConfig) bool {
+func (c Controller) tokenNeedsToBeRenewed(t TokenConfig) bool {
 	if cached, exists := c.cache[t.String()]; exists {
 		if time.Now().Before(cached.RenewAt) {
 			return false

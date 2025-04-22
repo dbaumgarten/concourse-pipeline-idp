@@ -1,4 +1,4 @@
-package storage
+package internal
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
@@ -27,7 +26,7 @@ type lock struct {
 	Version int64
 }
 
-func (v Vault) WriteToken(ctx context.Context, t config.TokenConfig, token string) error {
+func (v Vault) WriteToken(ctx context.Context, t TokenConfig, token string) error {
 	mountpoint, basepath := splitPath(v.ConcoursePath)
 	targetPath := path.Join(basepath, t.Team, t.Pipeline, t.Path)
 
@@ -40,7 +39,7 @@ func (v Vault) WriteToken(ctx context.Context, t config.TokenConfig, token strin
 	return err
 }
 
-func (v Vault) ReadToken(ctx context.Context, t config.TokenConfig) (string, error) {
+func (v Vault) ReadToken(ctx context.Context, t TokenConfig) (string, error) {
 	mountpoint, basepath := splitPath(v.ConcoursePath)
 	targetPath := path.Join(basepath, t.Team, t.Pipeline, t.Path)
 

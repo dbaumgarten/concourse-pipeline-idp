@@ -1,20 +1,19 @@
-package keys
+package internal
 
 import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/storage"
 	"github.com/go-jose/go-jose/v4"
 )
 
 type JWKSServer struct {
 	*http.ServeMux
-	store       storage.Storage
+	store       Storage
 	externalURL string
 }
 
-func NewJWKSServer(store storage.Storage, externalURL string) JWKSServer {
+func NewJWKSServer(store Storage, externalURL string) JWKSServer {
 	s := JWKSServer{
 		ServeMux:    http.NewServeMux(),
 		store:       store,

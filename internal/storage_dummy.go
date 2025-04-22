@@ -1,11 +1,10 @@
-package storage
+package internal
 
 import (
 	"context"
 	"log"
 	"time"
 
-	"github.com/dbaumgarten/concourse-pipeline-idp/internal/config"
 	"github.com/go-jose/go-jose/v4"
 )
 
@@ -14,7 +13,7 @@ type Dummy struct {
 	jwks   jose.JSONWebKeySet
 }
 
-func (o *Dummy) WriteToken(_ context.Context, t config.TokenConfig, token string) error {
+func (o *Dummy) WriteToken(_ context.Context, t TokenConfig, token string) error {
 
 	if o.tokens == nil {
 		o.tokens = make(map[string]string)
@@ -25,7 +24,7 @@ func (o *Dummy) WriteToken(_ context.Context, t config.TokenConfig, token string
 	return nil
 }
 
-func (o *Dummy) ReadToken(_ context.Context, t config.TokenConfig) (string, error) {
+func (o *Dummy) ReadToken(_ context.Context, t TokenConfig) (string, error) {
 	if o.tokens != nil {
 		if token, exists := o.tokens[t.String()]; exists {
 			return token, nil
