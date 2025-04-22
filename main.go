@@ -35,6 +35,11 @@ func main() {
 		out = getVaultStorage(cfg)
 	}
 
+	if cfg.ListenAddr != "" {
+		server := cpidp.NewJWKSServer(out, cfg.ExternalURL)
+		go server.ListenAndServe(cfg.ListenAddr)
+	}
+
 	if cfg.LeaderElectionOpts.Enabled {
 		log.Println("Trying to aquire leader lock")
 		err = cpidp.AquireLockAndHold(ctx, out, cfg.LeaderElectionOpts.Name, cfg.LeaderElectionOpts.TTL, time.Duration(float64(cfg.LeaderElectionOpts.TTL)*0.1))
@@ -53,32 +58,26 @@ func main() {
 		}()
 	}
 
-	signingKeys, existing, err := cpidp.LoadOrGenerateAndStoreKeys(ctx, out)
+	tokenGenerator := cpidp.NewTokenGenerator(cfg.ExternalURL, nil)
+
+	keyManager := cpidp.KeyManager{
+		Storage:           out,
+		TokenGenerator:    tokenGenerator,
+		KeyRotationPeriod: cfg.KeyOpts.RotationPeriod,
+		KeyMaxAge:         cfg.KeyOpts.MaxAge,
+	}
+
+	// Run the keyManager once to make sure signing-keys exist and tokenGenerator is configured with a key
+	_, err = keyManager.ManageOnce(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if existing {
-		log.Println("Found existing signing key(s)")
-	} else {
-		log.Println("No existing keys found! Generating new one")
-	}
-
-	if cfg.ListenAddr != "" {
-		server := cpidp.NewJWKSServer(out, cfg.ExternalURL)
-		go server.ListenAndServe(cfg.ListenAddr)
-	}
-
-	newestKey := cpidp.FindNewestKey(signingKeys)
-	log.Println("Using key with kid:", newestKey.KeyID)
-
-	gen := &cpidp.TokenGenerator{
-		Issuer: cfg.ExternalURL,
-		Key:    *newestKey,
-	}
+	// run the keyManager in background to periodically generate new keys
+	go keyManager.Manage(ctx)
 
 	ctl := cpidp.Controller{
-		TokenGenerator: gen,
+		TokenGenerator: tokenGenerator,
 		Storage:        out,
 		TokenConfigs:   cfg.Tokens,
 	}

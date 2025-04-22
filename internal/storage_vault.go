@@ -54,19 +54,23 @@ func (v Vault) ReadToken(ctx context.Context, t TokenConfig) (string, error) {
 	return secret.Data.Data["value"].(string), nil
 }
 
-func (v Vault) StoreKey(ctx context.Context, key jose.JSONWebKey) error {
-	encoded, err := json.Marshal(key)
-	if err != nil {
-		return err
+func (v Vault) StoreKeys(ctx context.Context, keys jose.JSONWebKeySet) error {
+	data := make(map[string]interface{})
+
+	for _, key := range keys.Keys {
+		encoded, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
+		data[key.KeyID] = string(encoded)
 	}
 
 	mountpoint, basepath := splitPath(v.ConfigPath)
 	targetPath := path.Join(basepath, "keys")
 
-	_, err = v.VaultClient.Secrets.KvV2Write(ctx, targetPath, schema.KvV2WriteRequest{
-		Data: map[string]interface{}{
-			key.KeyID: string(encoded),
-		}},
+	_, err := v.VaultClient.Secrets.KvV2Write(ctx, targetPath, schema.KvV2WriteRequest{
+		Data: data,
+	},
 		vault.WithMountPath(mountpoint),
 	)
 

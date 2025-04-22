@@ -33,13 +33,13 @@ func (o *Dummy) ReadToken(_ context.Context, t TokenConfig) (string, error) {
 	return "", ErrTokenNotFound
 }
 
-func (o *Dummy) StoreKey(ctx context.Context, key jose.JSONWebKey) error {
+func (o *Dummy) StoreKeys(ctx context.Context, keys jose.JSONWebKeySet) error {
 	if o.jwks.Keys == nil {
 		o.jwks = jose.JSONWebKeySet{
 			Keys: make([]jose.JSONWebKey, 1),
 		}
 	}
-	o.jwks.Keys[0] = key
+	o.jwks = keys
 	return nil
 }
 

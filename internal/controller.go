@@ -43,7 +43,7 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 	for _, t := range c.TokenConfigs {
 		renewed, err := c.handleTokenConfig(ctx, t)
 		if err != nil {
-			log.Printf("Error when renewing token %s", t)
+			log.Printf("Error when renewing token %s: %s", t, err)
 		} else if renewed {
 			log.Printf("Renewed token %s", t)
 		}

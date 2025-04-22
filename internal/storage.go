@@ -16,7 +16,7 @@ type Storage interface {
 	ReadToken(ctx context.Context, t TokenConfig) (string, error)
 	WriteToken(ctx context.Context, t TokenConfig, token string) error
 
-	StoreKey(ctx context.Context, key jose.JSONWebKey) error
+	StoreKeys(ctx context.Context, key jose.JSONWebKeySet) error
 	GetKeys(ctx context.Context) (jose.JSONWebKeySet, error)
 
 	Lock(ctx context.Context, name string, duration time.Duration) error

@@ -15,6 +15,7 @@ type Config struct {
 	Backend            string
 	VaultOpts          VaultOpts
 	LeaderElectionOpts LeaderElectionOpts
+	KeyOpts            KeyOpts
 	Tokens             []TokenConfig
 }
 
@@ -25,6 +26,11 @@ type VaultOpts struct {
 	ApproleSecret string
 	ConcoursePath string
 	ConfigPath    string
+}
+
+type KeyOpts struct {
+	RotationPeriod time.Duration
+	MaxAge         time.Duration
 }
 
 type LeaderElectionOpts struct {
@@ -50,6 +56,9 @@ func LoadConfig() (Config, error) {
 	flag.Bool("leaderElection.enabled", true, "Whether to use the storage-backend to elect a leader (required for HA-Setup)")
 	flag.String("leaderElection.name", "", "Name to use for this instance during leader-election. Must be unique, defaults to hostname")
 	flag.Duration("leaderElection.ttl", 1*time.Minute, "How long a leaderElection remains valid")
+
+	flag.Duration("key.rotationPeriod", 24*time.Hour, "Time after which a new signing key should be generated and used")
+	flag.Duration("key.maxAge", 48*time.Hour, "Time after which a key should be removed from the jwks")
 
 	flag.Parse()
 
@@ -83,6 +92,10 @@ func LoadConfig() (Config, error) {
 			Enabled: viper.GetBool("leaderElection.enabled"),
 			Name:    viper.GetString("leaderElection.name"),
 			TTL:     viper.GetDuration("leaderElection.ttl"),
+		},
+		KeyOpts: KeyOpts{
+			RotationPeriod: viper.GetDuration("key.rotationPeriod"),
+			MaxAge:         viper.GetDuration("key.maxAge"),
 		},
 		Tokens: []TokenConfig{},
 	}
@@ -125,6 +138,9 @@ func (c Config) Validate() error {
 		if err := tokenConfig.Validate(); err != nil {
 			return fmt.Errorf("invalid token config: %w", err)
 		}
+	}
+	if c.KeyOpts.MaxAge <= c.KeyOpts.RotationPeriod {
+		return fmt.Errorf("key.maxAge must be larger than key.rotationPeriod")
 	}
 	return nil
 }
